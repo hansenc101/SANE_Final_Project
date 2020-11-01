@@ -30,7 +30,7 @@ class VideoThread(QThread):
             startTime = time.time() # Get the start time for the fps calculation
 
             # I averaged about 20 fps, so 30 frames would allow for a time difference of a little more than a second
-            frameCounter = 30       # Let the for loop count to this number before calculating new fps
+            frameCounter = 50       # Let the for loop count to this number before calculating new fps
 
 
             for i in range(0, frameCounter): # for loop to allow a time difference to calculate fps
@@ -154,8 +154,12 @@ class SpeechRecognitionThread(QThread):
                 UI.speechRateLabel.setText("Speech Rate: " + str(speechRate) + "wpm")
             except sr.UnknownValueError:
                 UI.speechOutputLabel.setText("Google Speech Recognition could not understand audio")
+                UI.numWordsLabel.setText("# Words: N/A")
+                UI.speechRateLabel.setText("Speech Rate: 0 wpm")
             except sr.RequestError as e:
                 UI.speechOutputLabel.setText("Could not request results from Google Speech Recognition service; {0}".format(e))
+                UI.numWordsLabel.setText("# Words: N/A")
+                UI.speechRateLabel.setText("Speech Rate: 0 wpm")
 
 # This will quit the application when called
 def Quit():
@@ -177,13 +181,16 @@ UI.show() # Display the GUI
 
 FER_Thread = VideoThread() # instantiate a new VideoThread
 FER_Thread.new_frame_signal.connect(Update_Image) # When a new frame arrives, run Update_Image() method
-FER_Thread.start() # Begin thread
+
 
 UI.ahCountLabel.setText("Ah Counter Disconnected") # Set the initial text in lblOutput to indicate no client is connected
 webServerThread = FlaskServer() # instantiate a thread of FlaskServer
-webServerThread.start() # Begin processing the thread
+
 
 SR_Thread = SpeechRecognitionThread()
+
+webServerThread.start() # Begin processing the thread
+FER_Thread.start() # Begin thread
 SR_Thread.start()
 
 sys.exit(App.exec_()) # Exit 
