@@ -5,8 +5,12 @@ from PyQt5 import QtWidgets,QtGui,uic
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread
 from fer import FER
 from fer import Video
+import flask
 import time
+import speech_recognition as sr
+import string
 
+#================================ FACIAL RECOGNITION ==============================================================
 # This class describes the video thread
 class VideoThread(QThread):
     new_frame_signal = pyqtSignal(numpy.ndarray)
@@ -74,10 +78,93 @@ def Update_Image(frame):
     # the aspect ratio of the frame from the video feed
     UI.lblOutput.setPixmap(QtGui.QPixmap(qImg).scaled(w,h,Qt.KeepAspectRatio,Qt.FastTransformation))
 
+
+#========================================= WEB SERVER ====================================================================
+class FlaskServer(QThread):
+    app = flask.Flask(__name__) # instantiate the flask application
+    app.config["DEBUG"] = False # Set DEBUG to False so others can access the web server
+
+    def run(self):
+       self.app.run(host='0.0.0.0') # Allow anyone on the network to connect to the web server
+
+    @app.route('/', methods=['GET'])
+    def Home():
+        return "<h1>Hello, World!</h1><p>This webserver is working!</p>" # Output that verifies the webserver is working
+
+    @app.route('/time', methods=['GET']) # run Get_Time when the client requests to post to http://10.0.2.5:5000/time
+    # This function will return the current time from the web server
+    def Get_Time():
+        t = time.localtime() # get time from system
+        current_time = time.strftime("%H:%M:%S", t)
+        return flask.jsonify(Current_Time=current_time)
+
+
+    @app.route('/set_text', methods=['POST']) # run Set_Text when the client requests to post to http://10.0.2.5:5000/set_text
+    # This function will update the text fields for the server gui
+    def Set_Text(): 
+        print (flask.request.json) 
+        UI.statusbar.showMessage(flask.request.json['status']) # Get the text for the field 'status'
+        UI.ahCountLabel.setText("Ah Count: " + flask.request.json['ahCount']) # Get the text for the field 'ahCount'
+        return flask.jsonify(flask.request.json) # return json object
+
+    @app.route('/set_color', methods=['POST']) # run Set_Color when the client requests to post to http://10.0.2.5:5000/set_color
+    # This function will update the lblOutput colors, based upon the values set by the client
+    def Set_Color():
+        redColorValue = flask.request.json['red'] # Get the current red rgb value from client
+        greenColorValue = flask.request.json['green'] # Get the current green rgb value from client
+        blueColorValue = flask.request.json['blue'] # Get the current blue rgb value from client
+        BG_Color = "rgb(" + str(redColorValue) + "," + str(greenColorValue) + "," + str(blueColorValue) + ");" # set the background variable to the values read in from client
+        FG_Color = "rgb(255,255,255);" # set the foreground variable to these values
+        UI.ahCountLabel.setStyleSheet("QLabel {background-color :" + BG_Color + "color : " + FG_Color + "}") # Set the colors of the QLabel widget using values from BG_Color and FG_Color
+        UI.redMagLabel.setText("Red:   " + str(redColorValue)) # Output the current value of red rgb background color from client
+        UI.greenMagLabel.setText("Green: " + str(greenColorValue)) # Output the current value of green rgb background color from client
+        UI.blueMagLabel.setText("Blue:  " + str(blueColorValue)) # Output the current value of blue rgb background color from client
+        return flask.jsonify(flask.request.json) # return json object
+
+
+#=======================================SPEECH RECOGNITION==================================================
+class SpeechRecognitionThread(QThread):
+
+    def run(self):
+        # obtain audio from the microphone
+        phraseTimeLimit = 5
+        speechRate = 0
+
+        # This will be used to calculate words per minute
+        speechRateMultiplier = 60 / phraseTimeLimit # 60 seconds / phraseTimeLimit in seconds. 
+        UI.speechOutputLabel.setText("Say something...")
+        # Test speech recognition using Google API
+        while True:
+            with sr.Microphone() as source:
+                # UI.speechOutputLabel.setText("Say something...")
+                audio = sr.Recognizer().listen(source, phrase_time_limit=phraseTimeLimit)
+            # recognize speech using Google Speech Recognition
+            try:
+                # for testing purposes, we're just using the default API key
+                # to use another API key, use `r.recognize_google(audio, key="GOOGLE_SPEECH_RECOGNITION_API_KEY")`
+                # instead of `r.recognize_google(audio)`
+                googleRecognizedAudio = sr.Recognizer().recognize_google(audio)
+                #print("Google Speech Recognition thinks you said: " + googleRecognizedAudio)
+                res = len(str(googleRecognizedAudio).split())
+                speechRate = res * speechRateMultiplier
+                #print("You said " + str(res) + " words")
+                #print("Your speech rate is: " + str(speechRate) + " words/minute")
+                UI.speechOutputLabel.setText("You said: " + googleRecognizedAudio)
+                UI.numWordsLabel.setText("# Words: " + str(res))
+                UI.speechRateLabel.setText("Speech Rate: " + str(speechRate) + "wpm")
+            except sr.UnknownValueError:
+                UI.speechOutputLabel.setText("Google Speech Recognition could not understand audio")
+            except sr.RequestError as e:
+                UI.speechOutputLabel.setText("Could not request results from Google Speech Recognition service; {0}".format(e))
+
 # This will quit the application when called
 def Quit():
-    thread.requestInterruption()
-    thread.wait()
+    FER_Thread.requestInterruption()
+    FER_Thread.wait()
+    webServerThread.terminate()
+    webServerThread.wait()
+    SR_Thread.requestInterruption()
+    SR_Thread.terminate()
     App.quit()
 
 
@@ -88,9 +175,16 @@ UI.actionQuit.triggered.connect(Quit) # Connect Quit() method to actionQuit, and
 
 UI.show() # Display the GUI
 
-thread = VideoThread() # instantiate a new VideoThread
-thread.new_frame_signal.connect(Update_Image) # When a new frame arrives, run Update_Image() method
-thread.start() # Begin thread
+FER_Thread = VideoThread() # instantiate a new VideoThread
+FER_Thread.new_frame_signal.connect(Update_Image) # When a new frame arrives, run Update_Image() method
+FER_Thread.start() # Begin thread
+
+UI.ahCountLabel.setText("Ah Counter Disconnected") # Set the initial text in lblOutput to indicate no client is connected
+webServerThread = FlaskServer() # instantiate a thread of FlaskServer
+webServerThread.start() # Begin processing the thread
+
+SR_Thread = SpeechRecognitionThread()
+SR_Thread.start()
 
 sys.exit(App.exec_()) # Exit 
     
