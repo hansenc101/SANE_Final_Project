@@ -10,6 +10,8 @@ import time
 import speech_recognition as sr
 import string
 
+isSpeaking = False
+
 #================================ FACIAL RECOGNITION ==============================================================
 # This class describes the video thread
 class VideoThread(QThread):
@@ -161,37 +163,112 @@ class SpeechRecognitionThread(QThread):
                 UI.numWordsLabel.setText("# Words: N/A")
                 UI.speechRateLabel.setText("Speech Rate: 0 wpm")
 
+
+#==============================FILE I/O===========================================
+def generateReport():
+    reportFile = open("ToastMaster Report.txt", "w+")
+    reportData = "This is to test file input/output"
+    reportFile.write(reportData)
+    reportFile.close()
+
+def importReport():
+    reportFile = open("Toastmaster Report.txt", "r")
+    reportData = reportFile.read()
+    UI.reportOutputLabel.setText(reportData)
+    reportFile.close()
+
+
+#==============================REPORTING==========================================
+def goReportPage():
+    UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() + 1)
+    terminateThreads()
+
+def cancelReport():
+    UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() - 1)
+    webServerThread.start() # Begin web server thread
+    FER_Thread.start() # Begin facial expression recognition thread
+    SR_Thread.start()  # Begin speech recognition thread
+
+
+#==============================TIMER=============================================
+class TimerThread(QThread):
+    def run(self):
+        greenThreshold = (UI.greenThreshMinBox.value() * 60) + (UI.greenThreshSecBox.value()) # Green threshold flag in seconds
+        yellowThreshold = (UI.yellowThreshMinBox.value() * 60) + (UI.yellowThreshSecBox.value()) # yellow threshold flag in seconds
+        redThreshold = (UI.redThreshMinBox.value() * 60) + (UI.redThreshSecBox.value()) # red threshold flag in seconds
+        speechTimeLimit = (UI.speechLimitMinBox.value() * 60) + (UI.speechLimitSecBox.value()) # Time limit in seconds
+        isSpeaking = True
+        t = 0
+        while t <= speechTimeLimit: 
+            mins, secs = divmod(t, 60) 
+            if greenThreshold <= t and t < yellowThreshold:
+                UI.timeLeftLabel.setStyleSheet("background-color: green")
+            elif yellowThreshold <= t and t < redThreshold:
+                UI.timeLeftLabel.setStyleSheet("background-color: yellow")
+            elif redThreshold <= t:
+                UI.timeLeftLabel.setStyleSheet("background-color: red")
+            timer = '{:02d}:{:02d}'.format(mins, secs) 
+            #print(timer, end="\r") 
+            UI.timeLeftLabel.setText(timer)
+            time.sleep(1) 
+            t += 1
+        UI.timeLeftLabel.setText("Limit\nReached")
+        isSpeaking = False
+
+def startSpeech():
+    Timer_Thread.start()
+    SR_Thread.start()
+    UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() + 1)
+
+def stopSpeech():
+    terminateThreads()
+    UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() - 1)
+
+def setSpeechSettings():
+    # The time threshold and limit settings will be set once the Timer_Thread Begins running
+    UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() + 1)
+
+
 # This will quit the application when called
 def Quit():
+    terminateThreads()
+    App.quit()
+
+def terminateThreads():
     FER_Thread.requestInterruption()
     FER_Thread.wait()
     webServerThread.terminate()
     webServerThread.wait()
     SR_Thread.requestInterruption()
     SR_Thread.terminate()
-    App.quit()
+    Timer_Thread.requestInterruption()
+    Timer_Thread.terminate()
 
 
 App = QtWidgets.QApplication([]) # Initialize the application
 UI=uic.loadUi("Final_Project.ui") # Load in specific UI from disk
-
 UI.actionQuit.triggered.connect(Quit) # Connect Quit() method to actionQuit, and run when triggered
+
+UI.generateReportBtn.clicked.connect(goReportPage)
+UI.cancelBtn.clicked.connect(cancelReport)
+UI.saveReportBtn.clicked.connect(generateReport)
+UI.importReportBtn.clicked.connect(importReport)
+UI.startBtn.clicked.connect(startSpeech)
+UI.stopBtn.clicked.connect(stopSpeech)
+UI.enterBtn.clicked.connect(setSpeechSettings)
 
 UI.show() # Display the GUI
 
 FER_Thread = VideoThread() # instantiate a new VideoThread
 FER_Thread.new_frame_signal.connect(Update_Image) # When a new frame arrives, run Update_Image() method
-
-
 UI.ahCountLabel.setText("Ah Counter Disconnected") # Set the initial text in lblOutput to indicate no client is connected
 webServerThread = FlaskServer() # instantiate a thread of FlaskServer
-
-
 SR_Thread = SpeechRecognitionThread()
+Timer_Thread = TimerThread()
 
-webServerThread.start() # Begin processing the thread
-FER_Thread.start() # Begin thread
-SR_Thread.start()
+webServerThread.start() # Begin web server thread
+FER_Thread.start() # Begin facial expression recognition thread
+#SR_Thread.start()  # Begin speech recognition thread
 
 sys.exit(App.exec_()) # Exit 
     
