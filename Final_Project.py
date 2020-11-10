@@ -5,12 +5,15 @@ from PyQt5 import QtWidgets,QtGui,uic
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread
 from fer import FER
 from fer import Video
+import pyaudio
 import flask
 import time
 import speech_recognition as sr
 import string
 
 isSpeaking = False
+speechRateSamples = []
+ahCounter = None
 
 #================================ FACIAL RECOGNITION ==============================================================
 # This class describes the video thread
@@ -33,7 +36,6 @@ class VideoThread(QThread):
 
             # I averaged about 20 fps, so 30 frames would allow for a time difference of a little more than a second
             frameCounter = 50       # Let the for loop count to this number before calculating new fps
-
 
             for i in range(0, frameCounter): # for loop to allow a time difference to calculate fps
                 if self.isInterruptionRequested():
@@ -104,9 +106,11 @@ class FlaskServer(QThread):
     @app.route('/set_text', methods=['POST']) # run Set_Text when the client requests to post to http://10.0.2.5:5000/set_text
     # This function will update the text fields for the server gui
     def Set_Text(): 
-        print (flask.request.json) 
+        #print (flask.request.json) 
         UI.statusbar.showMessage(flask.request.json['status']) # Get the text for the field 'status'
-        UI.ahCountLabel.setText("Ah Count: " + flask.request.json['ahCount']) # Get the text for the field 'ahCount'
+        global ahCounter
+        ahCounter = flask.request.json['ahCount']
+        UI.ahCountLabel.setText("Ah Count: " + ahCounter) # Get the text for the field 'ahCount'
         return flask.jsonify(flask.request.json) # return json object
 
     @app.route('/set_color', methods=['POST']) # run Set_Color when the client requests to post to http://10.0.2.5:5000/set_color
@@ -130,30 +134,42 @@ class SpeechRecognitionThread(QThread):
     def run(self):
         # obtain audio from the microphone
         phraseTimeLimit = 5
-        speechRate = 0
+        speechRate = 0 # current speech rate of the speaker
+        totalNumWords = 0
 
         # This will be used to calculate words per minute
         speechRateMultiplier = 60 / phraseTimeLimit # 60 seconds / phraseTimeLimit in seconds. 
-        UI.speechOutputLabel.setText("Say something...")
+        UI.speechOutputLabel.setText("Say something! Start speech once your voice is recognized. Output goes here!")
+
+        # obtain audio from the microphone
+        r = sr.Recognizer()
+        r.energy_threshold = 100
+        # This will be used to calculate words per minute
+        speechRateMultiplier = 60 / phraseTimeLimit # 60 seconds / phraseTimeLimit in seconds. 
+        m = sr.Microphone()
+        pyAudio = pyaudio.PyAudio()
+        print(pyAudio.get_device_count())
+        #print(m.list_working_microphones())
+        print(m.list_microphone_names())
+
         # Test speech recognition using Google API
         while True:
             with sr.Microphone() as source:
-                # UI.speechOutputLabel.setText("Say something...")
-                audio = sr.Recognizer().listen(source, phrase_time_limit=phraseTimeLimit)
+                audio = r.listen(source, phrase_time_limit=phraseTimeLimit)
             # recognize speech using Google Speech Recognition
             try:
                 # for testing purposes, we're just using the default API key
                 # to use another API key, use `r.recognize_google(audio, key="GOOGLE_SPEECH_RECOGNITION_API_KEY")`
                 # instead of `r.recognize_google(audio)`
-                googleRecognizedAudio = sr.Recognizer().recognize_google(audio)
+                googleRecognizedAudio = r.recognize_google(audio)
                 #print("Google Speech Recognition thinks you said: " + googleRecognizedAudio)
                 res = len(str(googleRecognizedAudio).split())
                 speechRate = res * speechRateMultiplier
-                #print("You said " + str(res) + " words")
-                #print("Your speech rate is: " + str(speechRate) + " words/minute")
                 UI.speechOutputLabel.setText("You said: " + googleRecognizedAudio)
                 UI.numWordsLabel.setText("# Words: " + str(res))
                 UI.speechRateLabel.setText("Speech Rate: " + str(speechRate) + "wpm")
+                totalNumWords = totalNumWords + res
+                speechRateSamples.append(speechRate)
             except sr.UnknownValueError:
                 UI.speechOutputLabel.setText("Google Speech Recognition could not understand audio")
                 UI.numWordsLabel.setText("# Words: N/A")
@@ -165,11 +181,37 @@ class SpeechRecognitionThread(QThread):
 
 
 #==============================FILE I/O===========================================
-def generateReport():
+def saveReport(totalAvgSpeechRate):
+    global ahCounter
     reportFile = open("ToastMaster Report.txt", "w+")
-    reportData = "This is to test file input/output"
-    reportFile.write(reportData)
+    reportFile.write("==========TOASTMASTERS' TOOLBOX REPORT==========\n")
+    reportFile.write("        Average Words per Minute: " + str(totalAvgSpeechRate) + "\n")
+    reportFile.write("             Your Top Emotion is: " + "\n")
+    reportFile.write("Your Second Most Used Emotion is: " + "\n")
+    reportFile.write(" Your Third Most Used Emotion is: " + "\n")
+    reportFile.write("     Number of Filler Words Used: " + ahCounter + "\n")
     reportFile.close()
+
+def generateReport():
+    global ahCounter
+    if ahCounter == None:
+        ahCounter = "0"
+    sumSpeechRates = 0
+    for x in speechRateSamples:
+        sumSpeechRates = x + sumSpeechRates
+    if len(speechRateSamples) != 0:
+        totalAvgSpeechRate = sumSpeechRates / len(speechRateSamples)
+    elif len(speechRateSamples) == 0:
+        totalAvgSpeechRate = 0
+
+    outputText = "==========TOASTMASTERS' TOOLBOX REPORT==========\n"
+    outputText = outputText + "        Average Words per Minute: " + str(totalAvgSpeechRate) + "\n"
+    outputText = outputText + "             Your Top Emotion is: " + "\n"
+    outputText = outputText + "Your Second Most Used Emotion is: " + "\n"
+    outputText = outputText + " Your Third Most Used Emotion is: " + "\n"
+    outputText = outputText + "     Number of Filler Words Used: " + ahCounter + "\n"
+    UI.reportOutputLabel.setText(outputText)
+    UI.saveReportBtn.clicked.connect(lambda: saveReport(totalAvgSpeechRate))
 
 def importReport():
     reportFile = open("Toastmaster Report.txt", "r")
@@ -182,8 +224,11 @@ def importReport():
 def goReportPage():
     UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() + 1)
     terminateThreads()
+    generateReport()
 
 def cancelReport():
+    global speechRateSamples
+    speechRateSamples = []
     UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() - 1)
     webServerThread.start() # Begin web server thread
     FER_Thread.start() # Begin facial expression recognition thread
@@ -217,10 +262,11 @@ class TimerThread(QThread):
 
 def startSpeech():
     Timer_Thread.start()
-    SR_Thread.start()
+    isSpeaking = True
     UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() + 1)
 
 def stopSpeech():
+    isSpeaking = False
     terminateThreads()
     UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() - 1)
 
@@ -235,14 +281,27 @@ def Quit():
     App.quit()
 
 def terminateThreads():
-    FER_Thread.requestInterruption()
-    FER_Thread.wait()
-    webServerThread.terminate()
-    webServerThread.wait()
-    SR_Thread.requestInterruption()
-    SR_Thread.terminate()
-    Timer_Thread.requestInterruption()
-    Timer_Thread.terminate()
+    if (FER_Thread.isRunning()):
+        print("FER was running")
+        FER_Thread.requestInterruption()
+        FER_Thread.wait()
+
+    if (webServerThread.isRunning()):
+        print("Web Server Thread was running")
+        webServerThread.terminate()
+        webServerThread.wait()
+
+    if(SR_Thread.isRunning()):
+        print("Speech Recogntion Thread was running")
+        SR_Thread.requestInterruption()
+        SR_Thread.terminate()
+        SR_Thread.wait()
+    
+    if(Timer_Thread.isRunning()):
+        print("Timer Thread was running")
+        Timer_Thread.requestInterruption()
+        Timer_Thread.terminate()
+        Timer_Thread.wait()
 
 
 App = QtWidgets.QApplication([]) # Initialize the application
@@ -251,7 +310,7 @@ UI.actionQuit.triggered.connect(Quit) # Connect Quit() method to actionQuit, and
 
 UI.generateReportBtn.clicked.connect(goReportPage)
 UI.cancelBtn.clicked.connect(cancelReport)
-UI.saveReportBtn.clicked.connect(generateReport)
+#UI.saveReportBtn.clicked.connect(saveReport)
 UI.importReportBtn.clicked.connect(importReport)
 UI.startBtn.clicked.connect(startSpeech)
 UI.stopBtn.clicked.connect(stopSpeech)
@@ -268,7 +327,6 @@ Timer_Thread = TimerThread()
 
 webServerThread.start() # Begin web server thread
 FER_Thread.start() # Begin facial expression recognition thread
-#SR_Thread.start()  # Begin speech recognition thread
+SR_Thread.start()
 
 sys.exit(App.exec_()) # Exit 
-    
