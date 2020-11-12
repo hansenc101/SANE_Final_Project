@@ -13,6 +13,8 @@ import string
 
 isSpeaking = False
 speechRateSamples = []
+emotionsList = [] # array that tracks the emotions that are used by the user
+emotionNum = [] # Array that tracks "emotion use" each index in this array corresponds with the respective emotion in emotionsList[]
 ahCounter = None
 
 #================================ FACIAL RECOGNITION ==============================================================
@@ -30,6 +32,8 @@ class VideoThread(QThread):
 
         fps = 0 # initialize fps counter to 0
         detector = FER() # initialize Facial Expression Recognition
+
+        global isSpeaking
 
         while True:
             startTime = time.time() # Get the start time for the fps calculation
@@ -51,6 +55,14 @@ class VideoThread(QThread):
                         # except IndexError as error: this code will execute when no face is detected, and the IndexError is thrown. 
                         try:
                             emotion, score = detector.top_emotion(frame) # get the top emotion and score from the video frame
+                            if isSpeaking:
+                                if emotion in emotionsList: # save the emotion to a list and keep track of number of times emotion is recognized
+                                    index = emotionsList.index(emotion) # Get the index of current emotion
+                                    emotionNum[index] += emotionNum[index] # add 1 to the array at the index of current emotion to keep track of "emotion use"
+                                else:
+                                    emotionsList.append(emotion) # if emotion does not exist yet, append it into the array
+                                    emotionNum.append(1) # begin keeping track of this new emotion in the array that tracks "emotion use"
+
                             UI.emotionMagLabel.setText("Score: " + str(score)) # Output the magnitude of emotion to GUI
                             UI.emotionTypeLabel.setText("Emotion: " + emotion) # Output the type of emotion to GUI
 
@@ -140,10 +152,9 @@ class SpeechRecognitionThread(QThread):
         # This will be used to calculate words per minute
         speechRateMultiplier = 60 / phraseTimeLimit # 60 seconds / phraseTimeLimit in seconds. 
         UI.speechOutputLabel.setText("Say something! Start speech once your voice is recognized. Output goes here!")
-
         # obtain audio from the microphone
         r = sr.Recognizer()
-        r.energy_threshold = 100
+        #r.energy_threshold = 100
         # This will be used to calculate words per minute
         speechRateMultiplier = 60 / phraseTimeLimit # 60 seconds / phraseTimeLimit in seconds. 
         m = sr.Microphone()
@@ -181,15 +192,15 @@ class SpeechRecognitionThread(QThread):
 
 
 #==============================FILE I/O===========================================
-def saveReport(totalAvgSpeechRate):
+def saveReport(totalAvgSpeechRate, topEmotion, leastEmotion):
     global ahCounter
     reportFile = open("ToastMaster Report.txt", "w+")
     reportFile.write("==========TOASTMASTERS' TOOLBOX REPORT==========\n")
-    reportFile.write("        Average Words per Minute: " + str(totalAvgSpeechRate) + "\n")
-    reportFile.write("             Your Top Emotion is: " + "\n")
-    reportFile.write("Your Second Most Used Emotion is: " + "\n")
-    reportFile.write(" Your Third Most Used Emotion is: " + "\n")
-    reportFile.write("     Number of Filler Words Used: " + ahCounter + "\n")
+    reportFile.write("   Average Words per Minute: " + str(totalAvgSpeechRate) + "\n")
+    reportFile.write("  Your Most Used Emotion is: " + str(topEmotion) + "\n")
+    reportFile.write(" Your Least Used Emotion is: " + str(leastEmotion) + "\n")
+    #reportFile.write(" Your Third Most Used Emotion is: " + "\n")
+    reportFile.write("Number of Filler Words Used: " + ahCounter + "\n")
     reportFile.close()
 
 def generateReport():
@@ -203,15 +214,20 @@ def generateReport():
         totalAvgSpeechRate = sumSpeechRates / len(speechRateSamples)
     elif len(speechRateSamples) == 0:
         totalAvgSpeechRate = 0
+    
+    #maxNum = max(emotionNum)
+    #index = emotionNum.index(max(emotionNum))
+    topEmotion = emotionsList[emotionNum.index(max(emotionNum))] # Find index emotion that was used MOST from emotionNum list, and use that index to find most used emotion
+    leastEmotion = emotionsList[emotionNum.index(min(emotionNum))] # Find index emotion that was used LEAST from emotionNum list, and use that index to find most used emotion
 
     outputText = "==========TOASTMASTERS' TOOLBOX REPORT==========\n"
-    outputText = outputText + "        Average Words per Minute: " + str(totalAvgSpeechRate) + "\n"
-    outputText = outputText + "             Your Top Emotion is: " + "\n"
-    outputText = outputText + "Your Second Most Used Emotion is: " + "\n"
-    outputText = outputText + " Your Third Most Used Emotion is: " + "\n"
-    outputText = outputText + "     Number of Filler Words Used: " + ahCounter + "\n"
+    outputText = outputText + "   Average Words per Minute: " + str(totalAvgSpeechRate) + "\n"
+    outputText = outputText + "   Your Top Used Emotion is: " + str(topEmotion) + "\n"
+    outputText = outputText + " Your Least Used Emotion is: " + str(leastEmotion) + "\n"
+    #outputText = outputText + " Your Third Most Used Emotion is: " + "\n"
+    outputText = outputText + "Number of Filler Words Used: " + ahCounter + "\n"
     UI.reportOutputLabel.setText(outputText)
-    UI.saveReportBtn.clicked.connect(lambda: saveReport(totalAvgSpeechRate))
+    UI.saveReportBtn.clicked.connect(lambda: saveReport(totalAvgSpeechRate,topEmotion,leastEmotion))
 
 def importReport():
     reportFile = open("Toastmaster Report.txt", "r")
@@ -261,11 +277,13 @@ class TimerThread(QThread):
         isSpeaking = False
 
 def startSpeech():
-    Timer_Thread.start()
+    Timer_Thread.start() # Begin timing, now that the speech has started
+    global isSpeaking
     isSpeaking = True
     UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() + 1)
 
 def stopSpeech():
+    global isSpeaking
     isSpeaking = False
     terminateThreads()
     UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() - 1)
@@ -326,7 +344,9 @@ SR_Thread = SpeechRecognitionThread()
 Timer_Thread = TimerThread()
 
 webServerThread.start() # Begin web server thread
+time.sleep(2)
 FER_Thread.start() # Begin facial expression recognition thread
+time.sleep(3)
 SR_Thread.start()
 
 sys.exit(App.exec_()) # Exit 
