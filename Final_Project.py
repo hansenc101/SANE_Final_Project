@@ -10,12 +10,13 @@ import flask
 import time
 import speech_recognition as sr
 import string
+from playsound import playsound
 
-isSpeaking = False
-speechRateSamples = []
+isSpeaking = False # variable to keep track if the speaker is speaking or not
+speechRateSamples = [] # array to hold the samples of speech rates of the speaker
 emotionsList = [] # array that tracks the emotions that are used by the user
 emotionNum = [] # Array that tracks "emotion use" each index in this array corresponds with the respective emotion in emotionsList[]
-ahCounter = None
+ahCounter = None # variable to keep track of how many filler words the speaker has used
 
 #================================ FACIAL RECOGNITION ==============================================================
 # This class describes the video thread
@@ -63,12 +64,12 @@ class VideoThread(QThread):
                                     emotionsList.append(emotion) # if emotion does not exist yet, append it into the array
                                     emotionNum.append(1) # begin keeping track of this new emotion in the array that tracks "emotion use"
 
-                            UI.emotionMagLabel.setText("Score: " + str(score)) # Output the magnitude of emotion to GUI
-                            UI.emotionTypeLabel.setText("Emotion: " + emotion) # Output the type of emotion to GUI
+                            UI.emotionMagLabel.setText("Emotion Magnitude: " + str(score)) # Output the magnitude of emotion to GUI
+                            UI.emotionTypeLabel.setText("  Current Emotion: " + emotion) # Output the type of emotion to GUI
 
                         except IndexError as error: # no face is detected
-                            UI.emotionMagLabel.setText("Score N/A ") # Magnitude of emotion is unavailabe since no face is detected
-                            UI.emotionTypeLabel.setText("Emotion N/A") # Type of emotion is unavailabe since no face is detected
+                            UI.emotionMagLabel.setText("Emotion Magnitude: " + "N/A") # Magnitude of emotion is unavailabe since no face is detected
+                            UI.emotionTypeLabel.setText("  Current Emotion: " + "N/A") # Type of emotion is unavailabe since no face is detected
 
                         UI.outputFPS.setText("Frames Per Second: " + str(fps)) # Output the current fps                
             
@@ -118,12 +119,22 @@ class FlaskServer(QThread):
     @app.route('/set_text', methods=['POST']) # run Set_Text when the client requests to post to http://10.0.2.5:5000/set_text
     # This function will update the text fields for the server gui
     def Set_Text(): 
-        #print (flask.request.json) 
+        global isSpeaking
         UI.statusbar.showMessage(flask.request.json['status']) # Get the text for the field 'status'
         global ahCounter
+        if ahCounter == None:
+            prevCount = 0
+        else:
+            prevCount = int(ahCounter)
         ahCounter = flask.request.json['ahCount']
         UI.ahCountLabel.setText("Ah Count: " + ahCounter) # Get the text for the field 'ahCount'
-        return flask.jsonify(flask.request.json) # return json object
+        if isSpeaking and prevCount < int(ahCounter):
+            playsound('ring.wav')
+            print(prevCount + "\n")
+            print(ahCounter)
+            return flask.jsonify(flask.request.json) # return json object
+        else:
+            return flask.jsonify(flask.request.json) # return json object
 
     @app.route('/set_color', methods=['POST']) # run Set_Color when the client requests to post to http://10.0.2.5:5000/set_color
     # This function will update the lblOutput colors, based upon the values set by the client
@@ -215,8 +226,6 @@ def generateReport():
     elif len(speechRateSamples) == 0:
         totalAvgSpeechRate = 0
     
-    #maxNum = max(emotionNum)
-    #index = emotionNum.index(max(emotionNum))
     topEmotion = emotionsList[emotionNum.index(max(emotionNum))] # Find index emotion that was used MOST from emotionNum list, and use that index to find most used emotion
     leastEmotion = emotionsList[emotionNum.index(min(emotionNum))] # Find index emotion that was used LEAST from emotionNum list, and use that index to find most used emotion
 
@@ -299,26 +308,26 @@ def Quit():
     App.quit()
 
 def terminateThreads():
-    if (FER_Thread.isRunning()):
+    if (FER_Thread.isRunning()): # check if Facial Expression Recognition thread is running
         print("FER was running")
-        FER_Thread.requestInterruption()
+        FER_Thread.requestInterruption() # if running, kill it
         FER_Thread.wait()
 
-    if (webServerThread.isRunning()):
+    if (webServerThread.isRunning()): # check if Flask Server thread is running
         print("Web Server Thread was running")
-        webServerThread.terminate()
+        webServerThread.terminate() # if running, kill it
         webServerThread.wait()
 
-    if(SR_Thread.isRunning()):
+    if(SR_Thread.isRunning()): # check if Speech Recognition thread is running
         print("Speech Recogntion Thread was running")
         SR_Thread.requestInterruption()
-        SR_Thread.terminate()
+        SR_Thread.terminate() # if running, kill it
         SR_Thread.wait()
     
-    if(Timer_Thread.isRunning()):
+    if(Timer_Thread.isRunning()): # check is Timer Thread is running
         print("Timer Thread was running")
         Timer_Thread.requestInterruption()
-        Timer_Thread.terminate()
+        Timer_Thread.terminate() # if running, kill it
         Timer_Thread.wait()
 
 
