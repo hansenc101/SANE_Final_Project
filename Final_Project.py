@@ -12,13 +12,14 @@ import speech_recognition as sr
 import string
 from playsound import playsound
 
+#///////////////GLOBAL VARIABLES/////////////////////////
 isSpeaking = False # variable to keep track if the speaker is speaking or not
 speechRateSamples = [] # array to hold the samples of speech rates of the speaker
 emotionsList = [] # array that tracks the emotions that are used by the user
 emotionNum = [] # Array that tracks "emotion use" each index in this array corresponds with the respective emotion in emotionsList[]
 ahCounter = None # variable to keep track of how many filler words the speaker has used
-
-#================================ FACIAL RECOGNITION ==============================================================
+t = 0 # variable to keep track of how long the speaker has talked in seconds
+#================================ FACIAL EXPRESSION RECOGNITION ============================================================
 # This class describes the video thread
 class VideoThread(QThread):
     new_frame_signal = pyqtSignal(numpy.ndarray)
@@ -94,7 +95,7 @@ def Update_Image(frame):
     # .scaled() specifies how the mapped pixels are scaled to the size of lblOutput. Here, I specify that I want to preserve
     # the aspect ratio of the frame from the video feed
     UI.lblOutput.setPixmap(QtGui.QPixmap(qImg).scaled(w,h,Qt.KeepAspectRatio,Qt.FastTransformation))
-
+#----------------------------------END FACIAL RECOGNITION THREAD----------------------------------------------------------
 
 #========================================= WEB SERVER ====================================================================
 class FlaskServer(QThread):
@@ -119,22 +120,18 @@ class FlaskServer(QThread):
     @app.route('/set_text', methods=['POST']) # run Set_Text when the client requests to post to http://10.0.2.5:5000/set_text
     # This function will update the text fields for the server gui
     def Set_Text(): 
-        global isSpeaking
-        UI.statusbar.showMessage(flask.request.json['status']) # Get the text for the field 'status'
+        global isSpeaking 
         global ahCounter
+        UI.statusbar.showMessage(flask.request.json['status']) # Get the text for the field 'status'
         if ahCounter == None:
             prevCount = 0
         else:
             prevCount = int(ahCounter)
-        ahCounter = flask.request.json['ahCount']
+        ahCounter = flask.request.json['ahCount'] # set ahCounter from client input
         UI.ahCountLabel.setText("Ah Count: " + ahCounter) # Get the text for the field 'ahCount'
-        if isSpeaking and prevCount < int(ahCounter):
-            playsound('ring.wav')
-            print(prevCount + "\n")
-            print(ahCounter)
-            return flask.jsonify(flask.request.json) # return json object
-        else:
-            return flask.jsonify(flask.request.json) # return json object
+        if isSpeaking and prevCount < int(ahCounter): # only play the audio to ding the speaker if incrementing Ah-Counter and if they are speaking
+            playsound('ring.wav') # play audio to ding the speaker
+        return flask.jsonify(flask.request.json) # return json object
 
     @app.route('/set_color', methods=['POST']) # run Set_Color when the client requests to post to http://10.0.2.5:5000/set_color
     # This function will update the lblOutput colors, based upon the values set by the client
@@ -149,7 +146,7 @@ class FlaskServer(QThread):
         UI.greenMagLabel.setText("Green: " + str(greenColorValue)) # Output the current value of green rgb background color from client
         UI.blueMagLabel.setText("Blue:  " + str(blueColorValue)) # Output the current value of blue rgb background color from client
         return flask.jsonify(flask.request.json) # return json object
-
+#-------------------------------------END WEB SERVER THREAD--------------------------------------------------
 
 #=======================================SPEECH RECOGNITION==================================================
 class SpeechRecognitionThread(QThread):
@@ -158,11 +155,12 @@ class SpeechRecognitionThread(QThread):
         # obtain audio from the microphone
         phraseTimeLimit = 5
         speechRate = 0 # current speech rate of the speaker
-        totalNumWords = 0
+        totalNumWords = 0 # total number of words speaker says
+        global isSpeaking # use global isSpeaking variable
 
         # This will be used to calculate words per minute
         speechRateMultiplier = 60 / phraseTimeLimit # 60 seconds / phraseTimeLimit in seconds. 
-        UI.speechOutputLabel.setText("Say something! Start speech once your voice is recognized. Output goes here!")
+        UI.speechOutputLabel.setText("Start speech once your voice is recognized. OR Simply say 'Start Speech'!")
         # obtain audio from the microphone
         r = sr.Recognizer()
         #r.energy_threshold = 100
@@ -186,6 +184,11 @@ class SpeechRecognitionThread(QThread):
                 googleRecognizedAudio = r.recognize_google(audio)
                 #print("Google Speech Recognition thinks you said: " + googleRecognizedAudio)
                 res = len(str(googleRecognizedAudio).split())
+                if ("start speech" in googleRecognizedAudio) and (isSpeaking == False): # if user says "start speech", have the startBtn clicked to start speech
+                    UI.startBtn.click() # click the start button
+                if ("stop speech" in googleRecognizedAudio) and isSpeaking: # if the user says "stop speech", have the stopBtn clicked to stop speech
+                    UI.stopBtn.click() # click the stop button
+                    
                 speechRate = res * speechRateMultiplier
                 UI.speechOutputLabel.setText("You said: " + googleRecognizedAudio)
                 UI.numWordsLabel.setText("# Words: " + str(res))
@@ -200,22 +203,60 @@ class SpeechRecognitionThread(QThread):
                 UI.speechOutputLabel.setText("Could not request results from Google Speech Recognition service; {0}".format(e))
                 UI.numWordsLabel.setText("# Words: N/A")
                 UI.speechRateLabel.setText("Speech Rate: 0 wpm")
+#--------------------------------END SPEECH RECOGNITION THREAD-----------------------------------------------
 
+#==========================================TIMER=============================================================
+class TimerThread(QThread):
+    def run(self):
+        greenThreshold = (UI.greenThreshMinBox.value() * 60) + (UI.greenThreshSecBox.value()) # Green threshold flag in seconds
+        yellowThreshold = (UI.yellowThreshMinBox.value() * 60) + (UI.yellowThreshSecBox.value()) # yellow threshold flag in seconds
+        redThreshold = (UI.redThreshMinBox.value() * 60) + (UI.redThreshSecBox.value()) # red threshold flag in seconds
+        speechTimeLimit = (UI.speechLimitMinBox.value() * 60) + (UI.speechLimitSecBox.value()) # Time limit in seconds
+        global isSpeaking
+        isSpeaking = True
+        global t
+        while t <= speechTimeLimit: 
+            mins, secs = divmod(t, 60) 
+            if greenThreshold <= t and t < yellowThreshold:
+                UI.timeLeftLabel.setStyleSheet("background-color: green")
+                UI.timerLabel.setStyleSheet("background-color: green")
+            elif yellowThreshold <= t and t < redThreshold:
+                UI.timeLeftLabel.setStyleSheet("background-color: yellow")
+                UI.timerLabel.setStyleSheet("background-color: yellow")
+            elif redThreshold <= t:
+                UI.timeLeftLabel.setStyleSheet("background-color: red")
+                UI.timerLabel.setStyleSheet("background-color: red")
+            timer = '{:02d}:{:02d}'.format(mins, secs) 
+            UI.timeLeftLabel.setText(timer)
+            time.sleep(1) 
+            t += 1
+        UI.timeLeftLabel.setText("Limit\nReached")
+        isSpeaking = False
+#--------------------------------------END TIMER THREAD-----------------------------------------------
 
-#==============================FILE I/O===========================================
-def saveReport(totalAvgSpeechRate, topEmotion, leastEmotion):
+#==========================================FILE I/O===================================================
+def saveReport(totalAvgSpeechRate, topEmotion, leastEmotion, mins, secs):
     global ahCounter
     reportFile = open("ToastMaster Report.txt", "w+")
-    reportFile.write("==========TOASTMASTERS' TOOLBOX REPORT==========\n")
+    reportFile.write("===========TOASTMASTERS' TOOLBOX REPORT===========\n")
     reportFile.write("   Average Words per Minute: " + str(totalAvgSpeechRate) + "\n")
     reportFile.write("  Your Most Used Emotion is: " + str(topEmotion) + "\n")
     reportFile.write(" Your Least Used Emotion is: " + str(leastEmotion) + "\n")
-    #reportFile.write(" Your Third Most Used Emotion is: " + "\n")
     reportFile.write("Number of Filler Words Used: " + ahCounter + "\n")
+    reportFile.write("              You Spoke for: " + str(mins) + " minutes, " + str(secs) + " seconds\n")
     reportFile.close()
 
+def importReport():
+    reportFile = open("Toastmaster Report.txt", "r")
+    reportData = reportFile.read()
+    UI.reportOutputLabel.setText(reportData)
+    reportFile.close()
+#------------------------------------END FILE I/0 METHODS-----------------------------------------
+
+#=====================================REPORTING METHODS==========================================
 def generateReport():
     global ahCounter
+    global t
     if ahCounter == None:
         ahCounter = "0"
     sumSpeechRates = 0
@@ -225,27 +266,21 @@ def generateReport():
         totalAvgSpeechRate = sumSpeechRates / len(speechRateSamples)
     elif len(speechRateSamples) == 0:
         totalAvgSpeechRate = 0
+
+    mins, secs = divmod(t, 60) 
     
     topEmotion = emotionsList[emotionNum.index(max(emotionNum))] # Find index emotion that was used MOST from emotionNum list, and use that index to find most used emotion
     leastEmotion = emotionsList[emotionNum.index(min(emotionNum))] # Find index emotion that was used LEAST from emotionNum list, and use that index to find most used emotion
 
-    outputText = "==========TOASTMASTERS' TOOLBOX REPORT==========\n"
+    outputText = "===========TOASTMASTERS' TOOLBOX REPORT===========\n"
     outputText = outputText + "   Average Words per Minute: " + str(totalAvgSpeechRate) + "\n"
     outputText = outputText + "   Your Top Used Emotion is: " + str(topEmotion) + "\n"
     outputText = outputText + " Your Least Used Emotion is: " + str(leastEmotion) + "\n"
-    #outputText = outputText + " Your Third Most Used Emotion is: " + "\n"
     outputText = outputText + "Number of Filler Words Used: " + ahCounter + "\n"
+    outputText = outputText + "              You Spoke for: " + str(mins) + " minutes, " + str(secs) + " seconds\n"
     UI.reportOutputLabel.setText(outputText)
-    UI.saveReportBtn.clicked.connect(lambda: saveReport(totalAvgSpeechRate,topEmotion,leastEmotion))
+    UI.saveReportBtn.clicked.connect(lambda: saveReport(totalAvgSpeechRate,topEmotion,leastEmotion, mins, secs))
 
-def importReport():
-    reportFile = open("Toastmaster Report.txt", "r")
-    reportData = reportFile.read()
-    UI.reportOutputLabel.setText(reportData)
-    reportFile.close()
-
-
-#==============================REPORTING==========================================
 def goReportPage():
     UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() + 1)
     terminateThreads()
@@ -258,33 +293,9 @@ def cancelReport():
     webServerThread.start() # Begin web server thread
     FER_Thread.start() # Begin facial expression recognition thread
     SR_Thread.start()  # Begin speech recognition thread
+#--------------------------------END REPORTING METHODS-----------------------------------------------
 
-
-#==============================TIMER=============================================
-class TimerThread(QThread):
-    def run(self):
-        greenThreshold = (UI.greenThreshMinBox.value() * 60) + (UI.greenThreshSecBox.value()) # Green threshold flag in seconds
-        yellowThreshold = (UI.yellowThreshMinBox.value() * 60) + (UI.yellowThreshSecBox.value()) # yellow threshold flag in seconds
-        redThreshold = (UI.redThreshMinBox.value() * 60) + (UI.redThreshSecBox.value()) # red threshold flag in seconds
-        speechTimeLimit = (UI.speechLimitMinBox.value() * 60) + (UI.speechLimitSecBox.value()) # Time limit in seconds
-        isSpeaking = True
-        t = 0
-        while t <= speechTimeLimit: 
-            mins, secs = divmod(t, 60) 
-            if greenThreshold <= t and t < yellowThreshold:
-                UI.timeLeftLabel.setStyleSheet("background-color: green")
-            elif yellowThreshold <= t and t < redThreshold:
-                UI.timeLeftLabel.setStyleSheet("background-color: yellow")
-            elif redThreshold <= t:
-                UI.timeLeftLabel.setStyleSheet("background-color: red")
-            timer = '{:02d}:{:02d}'.format(mins, secs) 
-            #print(timer, end="\r") 
-            UI.timeLeftLabel.setText(timer)
-            time.sleep(1) 
-            t += 1
-        UI.timeLeftLabel.setText("Limit\nReached")
-        isSpeaking = False
-
+#==============================GENERIC APPLICATION METHODS======================================
 def startSpeech():
     Timer_Thread.start() # Begin timing, now that the speech has started
     global isSpeaking
@@ -294,13 +305,12 @@ def startSpeech():
 def stopSpeech():
     global isSpeaking
     isSpeaking = False
-    terminateThreads()
     UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() - 1)
+    terminateThreads()
 
 def setSpeechSettings():
     # The time threshold and limit settings will be set once the Timer_Thread Begins running
     UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() + 1)
-
 
 # This will quit the application when called
 def Quit():
@@ -329,19 +339,19 @@ def terminateThreads():
         Timer_Thread.requestInterruption()
         Timer_Thread.terminate() # if running, kill it
         Timer_Thread.wait()
+#--------------------------------END APPLICATION METHODS-----------------------------------------------
 
 
 App = QtWidgets.QApplication([]) # Initialize the application
 UI=uic.loadUi("Final_Project.ui") # Load in specific UI from disk
 UI.actionQuit.triggered.connect(Quit) # Connect Quit() method to actionQuit, and run when triggered
 
-UI.generateReportBtn.clicked.connect(goReportPage)
-UI.cancelBtn.clicked.connect(cancelReport)
-#UI.saveReportBtn.clicked.connect(saveReport)
-UI.importReportBtn.clicked.connect(importReport)
-UI.startBtn.clicked.connect(startSpeech)
-UI.stopBtn.clicked.connect(stopSpeech)
-UI.enterBtn.clicked.connect(setSpeechSettings)
+UI.generateReportBtn.clicked.connect(goReportPage) # connect Generate Report button click to goReportPage() function
+UI.cancelBtn.clicked.connect(cancelReport) # connect Cancel button to cancelReport() function
+UI.importReportBtn.clicked.connect(importReport) # connect Import Report button to importReport() function
+UI.startBtn.clicked.connect(startSpeech) # connect Start button to startSpeech() function
+UI.stopBtn.clicked.connect(stopSpeech) # coneect Stop button to stopSpeech() function
+UI.enterBtn.clicked.connect(setSpeechSettings) # connect Enter button to setSpeechSettings()
 
 UI.show() # Display the GUI
 
@@ -349,13 +359,13 @@ FER_Thread = VideoThread() # instantiate a new VideoThread
 FER_Thread.new_frame_signal.connect(Update_Image) # When a new frame arrives, run Update_Image() method
 UI.ahCountLabel.setText("Ah Counter Disconnected") # Set the initial text in lblOutput to indicate no client is connected
 webServerThread = FlaskServer() # instantiate a thread of FlaskServer
-SR_Thread = SpeechRecognitionThread()
-Timer_Thread = TimerThread()
+SR_Thread = SpeechRecognitionThread() # instantiate a thread of SpeechRecognitionThread
+Timer_Thread = TimerThread() # instantiate a thread of TimerThread
 
 webServerThread.start() # Begin web server thread
-time.sleep(2)
+time.sleep(2) # wait 2 seconds
 FER_Thread.start() # Begin facial expression recognition thread
-time.sleep(3)
-SR_Thread.start()
+time.sleep(3) # wait 3 seconds
+SR_Thread.start() # Begin speech recognition thread
 
 sys.exit(App.exec_()) # Exit 
