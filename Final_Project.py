@@ -19,6 +19,7 @@ emotionsList = [] # array that tracks the emotions that are used by the user
 emotionNum = [] # Array that tracks "emotion use" each index in this array corresponds with the respective emotion in emotionsList[]
 ahCounter = None # variable to keep track of how many filler words the speaker has used
 t = 0 # variable to keep track of how long the speaker has talked in seconds
+
 #================================ FACIAL EXPRESSION RECOGNITION ============================================================
 # This class describes the video thread
 class VideoThread(QThread):
@@ -35,7 +36,7 @@ class VideoThread(QThread):
         fps = 0 # initialize fps counter to 0
         detector = FER() # initialize Facial Expression Recognition
 
-        global isSpeaking
+        global isSpeaking # access global isSpeaking variable 
 
         while True:
             startTime = time.time() # Get the start time for the fps calculation
@@ -153,24 +154,26 @@ class SpeechRecognitionThread(QThread):
 
     def run(self):
         # obtain audio from the microphone
-        phraseTimeLimit = 5
+        phraseTimeLimit = 5 # the amount of time, in seconds to record speaking audio from microphone
         speechRate = 0 # current speech rate of the speaker
         totalNumWords = 0 # total number of words speaker says
         global isSpeaking # use global isSpeaking variable
 
         # This will be used to calculate words per minute
         speechRateMultiplier = 60 / phraseTimeLimit # 60 seconds / phraseTimeLimit in seconds. 
-        UI.speechOutputLabel.setText("Start speech once your voice is recognized. OR Simply say 'Start Speech'!")
+        UI.speechOutputLabel.setText("Start speech once your voice is recognized. OR Simply say 'Start Speech'!") # output text to speechOutputLabel
+
         # obtain audio from the microphone
         r = sr.Recognizer()
-        #r.energy_threshold = 100
+        #r.energy_threshold = 100 # energy threshold of microphone to determine what volume is considered speaking or not
+
         # This will be used to calculate words per minute
         speechRateMultiplier = 60 / phraseTimeLimit # 60 seconds / phraseTimeLimit in seconds. 
-        m = sr.Microphone()
-        pyAudio = pyaudio.PyAudio()
-        print(pyAudio.get_device_count())
-        #print(m.list_working_microphones())
-        print(m.list_microphone_names())
+
+        m = sr.Microphone() # instantiate a microphone variable
+        pyAudio = pyaudio.PyAudio() # instantiate a pyaudio variable to see what microphones are available
+        print(pyAudio.get_device_count()) # output to terminal the number of microphones available **debugging purposes only**
+        print(m.list_microphone_names()) # output to terminal the names of the availabel microphones **debugging purposes only**
 
         # Test speech recognition using Google API
         while True:
@@ -189,17 +192,17 @@ class SpeechRecognitionThread(QThread):
                 if ("stop speech" in googleRecognizedAudio) and isSpeaking: # if the user says "stop speech", have the stopBtn clicked to stop speech
                     UI.stopBtn.click() # click the stop button
                     
-                speechRate = res * speechRateMultiplier
-                UI.speechOutputLabel.setText("You said: " + googleRecognizedAudio)
-                UI.numWordsLabel.setText("# Words: " + str(res))
-                UI.speechRateLabel.setText("Speech Rate: " + str(speechRate) + "wpm")
-                totalNumWords = totalNumWords + res
-                speechRateSamples.append(speechRate)
-            except sr.UnknownValueError:
+                speechRate = res * speechRateMultiplier # calculate speech rate as words per minute (w/m) or (wpm)
+                UI.speechOutputLabel.setText("You said: " + googleRecognizedAudio) # Output the recognized audio
+                UI.numWordsLabel.setText("# Words: " + str(res)) # output number of words said
+                UI.speechRateLabel.setText("Speech Rate: " + str(speechRate) + "wpm") # output current speech rate
+                totalNumWords = totalNumWords + res # calculate total number of words said in speech so far
+                speechRateSamples.append(speechRate) # keep track of the speechRate samples we have calculated
+            except sr.UnknownValueError: # if audio is unrecognizable
                 UI.speechOutputLabel.setText("Google Speech Recognition could not understand audio")
                 UI.numWordsLabel.setText("# Words: N/A")
                 UI.speechRateLabel.setText("Speech Rate: 0 wpm")
-            except sr.RequestError as e:
+            except sr.RequestError as e: # if bad internet connection or if Google's API is unavailable
                 UI.speechOutputLabel.setText("Could not request results from Google Speech Recognition service; {0}".format(e))
                 UI.numWordsLabel.setText("# Words: N/A")
                 UI.speechRateLabel.setText("Speech Rate: 0 wpm")
@@ -212,84 +215,90 @@ class TimerThread(QThread):
         yellowThreshold = (UI.yellowThreshMinBox.value() * 60) + (UI.yellowThreshSecBox.value()) # yellow threshold flag in seconds
         redThreshold = (UI.redThreshMinBox.value() * 60) + (UI.redThreshSecBox.value()) # red threshold flag in seconds
         speechTimeLimit = (UI.speechLimitMinBox.value() * 60) + (UI.speechLimitSecBox.value()) # Time limit in seconds
-        global isSpeaking
-        isSpeaking = True
-        global t
-        while t <= speechTimeLimit: 
-            mins, secs = divmod(t, 60) 
-            if greenThreshold <= t and t < yellowThreshold:
+        global isSpeaking # access global isSpeaking variable
+        isSpeaking = True # the speaker is now speaking
+        global t # access global time variable 
+        while t <= speechTimeLimit: # while under the speech time limit
+            mins, secs = divmod(t, 60) # convert t to seconds and minutes
+            if greenThreshold <= t and t < yellowThreshold: # time for green flag?
                 UI.timeLeftLabel.setStyleSheet("background-color: green")
                 UI.timerLabel.setStyleSheet("background-color: green")
-            elif yellowThreshold <= t and t < redThreshold:
-                UI.timeLeftLabel.setStyleSheet("background-color: yellow")
+            elif yellowThreshold <= t and t < redThreshold: # time for yellow flag?
+                UI.timeLeftLabel.setStyleSheet("background-color: yellow") 
                 UI.timerLabel.setStyleSheet("background-color: yellow")
-            elif redThreshold <= t:
+            elif redThreshold <= t: # time for red flag?
                 UI.timeLeftLabel.setStyleSheet("background-color: red")
                 UI.timerLabel.setStyleSheet("background-color: red")
-            timer = '{:02d}:{:02d}'.format(mins, secs) 
-            UI.timeLeftLabel.setText(timer)
-            time.sleep(1) 
-            t += 1
-        UI.timeLeftLabel.setText("Limit\nReached")
-        isSpeaking = False
+            timer = '{:02d}:{:02d}'.format(mins, secs) # convert timer values to a string
+            UI.timeLeftLabel.setText(timer) # output the current timer values to GUI
+            time.sleep(1) # wait 1 second
+            t += 1 # add one to timer variable
+        UI.timeLeftLabel.setText("Limit\nReached") #output to GUI that time limit has been reached
+        isSpeaking = False # speaker is no longer speaking
 #--------------------------------------END TIMER THREAD-----------------------------------------------
 
 #==========================================FILE I/O===================================================
 def saveReport(totalAvgSpeechRate, topEmotion, leastEmotion, mins, secs):
-    global ahCounter
-    reportFile = open("ToastMaster Report.txt", "w+")
+    global ahCounter # access global ahCount variable
+    reportFile = open("ToastMaster Report.txt", "w+") # open file in writing mode (overwrite if file already exists)
+
+    # The follow .write statements will write the contents of the report to the "ToastMaster Report.txt" file
     reportFile.write("===========TOASTMASTERS' TOOLBOX REPORT===========\n")
     reportFile.write("   Average Words per Minute: " + str(totalAvgSpeechRate) + "\n")
     reportFile.write("  Your Most Used Emotion is: " + str(topEmotion) + "\n")
     reportFile.write(" Your Least Used Emotion is: " + str(leastEmotion) + "\n")
     reportFile.write("Number of Filler Words Used: " + ahCounter + "\n")
     reportFile.write("              You Spoke for: " + str(mins) + " minutes, " + str(secs) + " seconds\n")
-    reportFile.close()
+    reportFile.close() # close the file
 
 def importReport():
-    reportFile = open("Toastmaster Report.txt", "r")
-    reportData = reportFile.read()
-    UI.reportOutputLabel.setText(reportData)
-    reportFile.close()
+    reportFile = open("Toastmaster Report.txt", "r") # open report file as read only
+    reportData = reportFile.read() # read in contents of file
+    UI.reportOutputLabel.setText(reportData) # output contents of file to GUI
+    reportFile.close() # close the file
 #------------------------------------END FILE I/0 METHODS-----------------------------------------
 
 #=====================================REPORTING METHODS==========================================
 def generateReport():
-    global ahCounter
-    global t
-    if ahCounter == None:
-        ahCounter = "0"
-    sumSpeechRates = 0
-    for x in speechRateSamples:
-        sumSpeechRates = x + sumSpeechRates
-    if len(speechRateSamples) != 0:
-        totalAvgSpeechRate = sumSpeechRates / len(speechRateSamples)
-    elif len(speechRateSamples) == 0:
-        totalAvgSpeechRate = 0
+    global ahCounter # access global ahCounter variable
+    global t # access global timer variable
+    if ahCounter == None: # if ahCounter is empty
+        ahCounter = "0" # set ahCounter to 0
+    sumSpeechRates = 0 # instantiate a variable to hold the summation of all the speech rates we have collected
+    for x in speechRateSamples: # loop through speechRateSamples vector
+        sumSpeechRates = x + sumSpeechRates # sum all the speech rate samples we have collected
+    if len(speechRateSamples) != 0: # if we have data in speech rate samples vector
+        totalAvgSpeechRate = sumSpeechRates / len(speechRateSamples) # calculate overall average of the vector of speech rate samples
+    elif len(speechRateSamples) == 0: # if no data in speech rate samples vector
+        totalAvgSpeechRate = 0 # set total average speech rate to 0
 
-    mins, secs = divmod(t, 60) 
+    mins, secs = divmod(t, 60) # convert t to minutes and seconds
     
     topEmotion = emotionsList[emotionNum.index(max(emotionNum))] # Find index emotion that was used MOST from emotionNum list, and use that index to find most used emotion
     leastEmotion = emotionsList[emotionNum.index(min(emotionNum))] # Find index emotion that was used LEAST from emotionNum list, and use that index to find most used emotion
 
+    # the follow code creates a long string of the report and its data that will then be passed to the GUI
     outputText = "===========TOASTMASTERS' TOOLBOX REPORT===========\n"
     outputText = outputText + "   Average Words per Minute: " + str(totalAvgSpeechRate) + "\n"
     outputText = outputText + "   Your Top Used Emotion is: " + str(topEmotion) + "\n"
     outputText = outputText + " Your Least Used Emotion is: " + str(leastEmotion) + "\n"
     outputText = outputText + "Number of Filler Words Used: " + ahCounter + "\n"
     outputText = outputText + "              You Spoke for: " + str(mins) + " minutes, " + str(secs) + " seconds\n"
-    UI.reportOutputLabel.setText(outputText)
-    UI.saveReportBtn.clicked.connect(lambda: saveReport(totalAvgSpeechRate,topEmotion,leastEmotion, mins, secs))
 
+    UI.reportOutputLabel.setText(outputText) # output Report to reportOutputLabel
+    UI.saveReportBtn.clicked.connect(lambda: saveReport(totalAvgSpeechRate,topEmotion,leastEmotion, mins, secs)) # connect saveReportBtn to saveReport function, and pass appropriate arguments
+
+# go to the report page on GUI and generate the report
 def goReportPage():
-    UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() + 1)
-    terminateThreads()
-    generateReport()
+    UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() + 1) # change GUI to report page
+    terminateThreads() # terminate current threads
+    generateReport() # call the generateReport function to generate the report
 
+# cancel the current report and go back to speaking page on GUI
 def cancelReport():
-    global speechRateSamples
-    speechRateSamples = []
-    UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() - 1)
+    global speechRateSamples # access global speechRateSamples vector
+    speechRateSamples = [] # empty the vector
+    UI.stackedWidget.setCurrentIndex(UI.stackedWidget.currentIndex() - 1) # go back to speaking page on GUI
     webServerThread.start() # Begin web server thread
     FER_Thread.start() # Begin facial expression recognition thread
     SR_Thread.start()  # Begin speech recognition thread
@@ -298,15 +307,15 @@ def cancelReport():
 #==============================GENERIC APPLICATION METHODS======================================
 def startSpeech():
     Timer_Thread.start() # Begin timing, now that the speech has started
-    global isSpeaking
-    isSpeaking = True
-    UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() + 1)
+    global isSpeaking # access global isSpeaking variable
+    isSpeaking = True # the speaker is now speaking
+    UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() + 1) # change start button to stop button on GUI
 
 def stopSpeech():
-    global isSpeaking
-    isSpeaking = False
-    UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() - 1)
-    terminateThreads()
+    global isSpeaking #access global isSpeaking variable
+    isSpeaking = False # the speaker is no longer speaking
+    UI.stackedWidget_2.setCurrentIndex(UI.stackedWidget_2.currentIndex() - 1) # change stop button to start button on GUI
+    terminateThreads() # terminate all the running threads
 
 def setSpeechSettings():
     # The time threshold and limit settings will be set once the Timer_Thread Begins running
@@ -314,7 +323,7 @@ def setSpeechSettings():
 
 # This will quit the application when called
 def Quit():
-    terminateThreads()
+    terminateThreads() # terminate all the running threads
     App.quit()
 
 def terminateThreads():

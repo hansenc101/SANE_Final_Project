@@ -15,14 +15,14 @@ class FlaskClient(QThread):
 
 # Function to quit thread 
 def Quit(): 
-    thread.terminate()
+    thread.terminate() # terminate the webserver client thread
     thread.wait()
-    App.quit()
+    App.quit() # exit application
 
 
 # Function that executes when Increment Button is clicked
 def Handle_Increment_Click():
-    global ah_Count
+    global ah_Count # access global ah_Count variable
     ah_Count = ah_Count + 1 # Increment the ah_Count by 1
     UI.lblOutput.setText("Ah Count: " + str(ah_Count)) # Display the current ah_Count
     r = requests.post('http://10.0.2.5:5000/set_text', json={"ahCount":str(ah_Count), "status":"CENG 4113/5113"}) # Send text data to web server
@@ -30,7 +30,7 @@ def Handle_Increment_Click():
 
 # Function that executes when Decrement Button is clicked
 def Handle_Decrement_Click():
-    global ah_Count
+    global ah_Count # access global ah_Count variable
     ah_Count = ah_Count - 1 # Decrement the ah_Count by 1
     if ah_Count == -1: # Do not let ah_Count go below 0
         ah_Count = 0   # If ah_Count goes negative, just set to 0
